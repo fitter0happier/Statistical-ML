@@ -20,8 +20,24 @@ def perceptron(X, y, max_iterations):
     :return w:              w - weights, (d,) np array
     :return b:              b - bias, python float
     """
-    raise NotImplementedError("You have to implement this function.")
-    w, b = None, None
+    
+    separated = False
+    i = 0
+    v = np.zeros(X.shape[0] + 1)
+    multiples = np.where(y == 0, 1, -1)
+    z = (np.vstack((X, np.ones(X.shape[1]))) * multiples).T
+
+    while (not separated and i != max_iterations):
+        separated = True
+        i += 1 
+
+        for col in z:
+            if np.dot(v, col) <= 0:
+                v += col
+                separated = False
+
+    w, b = (np.nan, np.nan) if (i == max_iterations) else (v[:-1], v[-1])
+
     return w, b
 
 
@@ -35,8 +51,9 @@ def lift_dimension(X):
                 2-dimensional observations, (2, number_of_observations) np array
     :return Z:  observations in the lifted feature space, (5, number_of_observations) np array
     """
-    raise NotImplementedError("You have to implement this function.")
-    Z = None
+    
+    Z = np.vstack((X, X[0] ** 2, X[0] * X[1], X[1] ** 2))
+
     return Z
 
 
@@ -53,8 +70,10 @@ def classif_quadrat_perc(tst, model):
     :return:        Y - classification result (contains either 0 or 1), (n,) np array
     """
 
-    raise NotImplementedError("You have to implement this function.")
-    Y = None
+    Z = lift_dimension(tst)
+    logits = np.dot(Z.T, model['w']) + model['b']
+    Y = np.where(logits > 0, 0, 1)
+
     return Y
 
 
