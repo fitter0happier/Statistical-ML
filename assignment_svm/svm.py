@@ -15,8 +15,27 @@ def get_kernel(Xi, Xj, options):
     :return K:      array with kernel function values,  (m, n) np array
     """
 
-    raise NotImplementedError("You have to implement this function.")
     K = None
+    kernel_func = options['kernel']
+
+    if (kernel_func == 'linear'):
+        K = Xi.T @ Xj
+
+    elif (kernel_func == 'polynomial'):
+        d = options['d']
+        K = (1 + Xi.T @ Xj)**d
+
+    elif (kernel_func == 'rbf'):
+        sigma = options['sigma']
+        m = Xi.shape[1]
+        n = Xj.shape[1]
+        K = np.zeros((m, n))
+
+        for i in range(m):
+            for j in range(n):
+                K[i][j] = np.exp(-(np.linalg.norm(Xi[:, i] -
+                                 Xj[:, j])**2) / (2 * sigma**2))
+
     return K
 
 
@@ -43,11 +62,24 @@ def svm(X, y, C, options):
         - model['b']        - bias term, scalar
         - model['fun']      - function that should be used for classification, function reference
     """
+    K = get_kernel(X, X, options)
+    H = K * y * y.reshape(-1, 1)
 
-    raise NotImplementedError("You have to implement this function.")
     model = {}
     model['fun'] = classif_svm
     model['options'] = options
+    alpha_opt, _, _, _ = gsmo(H=H,
+                              f=-1 * np.ones(y.shape[0]),
+                              a=y,
+                              lb=0,
+                              ub=C,
+                              verb=options['verb'],
+                              t_max=options['t_max'])
+    model['sv'] = X[:, alpha_opt > 10e-10]
+    model['y'] = y[alpha_opt > 10e-10]
+    model['alpha'] = alpha_opt[alpha_opt > 10e-10]
+    model['b'] = compute_bias(K, y, alpha_opt, C)
+
     return model
 
 
@@ -60,8 +92,14 @@ def classif_svm(X, model):
 
     :return classif: labels (-1, 1) for feature points in X, np array (n, )
     """
-    raise NotImplementedError("You have to implement this function.")
-    classif = None
+
+    res = np.sum(model['alpha'].reshape(-1, 1)
+                 * model['y'].reshape(-1, 1)
+                 * get_kernel(model['sv'],
+                              X,
+                              model['options']), axis=0) + model['b']
+    classif = np.where(res < 0, -1, 1)
+
     return classif
 
 
@@ -79,8 +117,15 @@ def svm_crossvalidation(itrn, itst, X, y, C, options):
     :return error:  mean crossvalidation test error
     """
 
-    raise NotImplementedError("You have to implement this function.")
-    error = None
+    error = 0
+
+    for train_fold, test_fold in zip(itrn, itst):
+        model = svm(X[:, train_fold], y[train_fold], C, options)
+        preds = classif_svm(X[:, test_fold], model)
+        error += np.sum(np.where(preds == y[test_fold], 0, 1)) / preds.shape[0]
+
+    error = error / len(itrn)
+
     return error
 
 
@@ -102,19 +147,47 @@ def compute_measurements_2d(data, normalization=None):
                           normalization - same as :param normalization:,
                                           computed from data if normalization parameter not provided
     """
+    imgs = data['images']
+    lr = np.sum(imgs[:, :int(imgs.shape[1] / 2), :], axis=(0, 1)).astype(np.float64) - \
+        np.sum(imgs[:, int(imgs.shape[1] / 2):, :], axis=(0, 1)).astype(np.float64)
+    lr = lr.reshape(1, -1)
+    ud = np.sum(imgs[:int(imgs.shape[1] / 2), :, :], axis=(0, 1)).astype(np.float64) - \
+        np.sum(imgs[int(imgs.shape[1] / 2):, :, :], axis=(0, 1)).astype(np.float64)
+    ud = ud.reshape(1, -1)
 
-    raise NotImplementedError("You have to implement this function.")
-    X, y, normalization = None, None, None
-    return X, y, normalization
+    if normalization is None:
+        normalization = {}
+        normalization['lr_mean'] = np.mean(lr)
+        normalization['lr_std'] = np.std(lr)
+        normalization['ud_mean'] = np.mean(ud)
+        normalization['ud_std'] = np.std(ud)
+
+    lr = (lr - normalization['lr_mean']) / normalization['lr_std']
+    ud = (ud - normalization['ud_mean']) / normalization['ud_std']
+
+    X = np.vstack((lr, ud))
+
+    return X, data['labels'], normalization
 
 
-################################################################################
-#####                                                                      #####
-#####             Below this line are already prepared methods             #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line are already prepared methods
+#####
+##########################################################################
 
-def gsmo(H, f, a, b=0, lb=-np.inf, ub=np.inf, x_init=None, nabla_0=None, tolerance_KKT=0.001, verb=0, t_max=np.inf):
+def gsmo(
+    H,
+    f,
+    a,
+    b=0,
+    lb=-np.inf,
+    ub=np.inf,
+    x_init=None,
+    nabla_0=None,
+    tolerance_KKT=0.001,
+    verb=0,
+        t_max=np.inf):
     """
     GSMO Generalized SMO algorithm for classifier design.
 
@@ -198,8 +271,14 @@ def gsmo(H, f, a, b=0, lb=-np.inf, ub=np.inf, x_init=None, nabla_0=None, toleran
         x_lb = x == lb
         x_ub = x == ub
 
-        min_mask = np.logical_or.reduce((x_feas, np.logical_and(x_lb, a_pos), np.logical_and(x_ub, a_neg)))
-        max_mask = np.logical_or.reduce((x_feas, np.logical_and(x_lb, a_neg), np.logical_and(x_ub, a_pos)))
+        min_mask = np.logical_or.reduce(
+            (x_feas, np.logical_and(
+                x_lb, a_pos), np.logical_and(
+                x_ub, a_neg)))
+        max_mask = np.logical_or.reduce(
+            (x_feas, np.logical_and(
+                x_lb, a_neg), np.logical_and(
+                x_ub, a_pos)))
 
         if np.sum(max_mask) > 0:
             tmp = F.copy()
@@ -229,8 +308,10 @@ def gsmo(H, f, a, b=0, lb=-np.inf, ub=np.inf, x_init=None, nabla_0=None, toleran
         if (a[maxI] > 0):
             (tau_lb_v, tau_ub_v) = (tau_ub_v, tau_lb_v)
 
-        tau = (nabla[maxI] / a[maxI] - nabla[minI] / a[minI]) / \
-              (H[minI, minI] / a[minI] ** 2 + H[maxI, maxI] / a[maxI] ** 2 - 2 * H[maxI, minI] / (a[minI] * a[maxI]))
+        tau = (nabla[maxI] / a[maxI] - nabla[minI] / a[minI]) / (H[minI,
+                                                                   minI] / a[minI] ** 2 + H[maxI,
+                                                                                            maxI] / a[maxI] ** 2 - 2 * H[maxI,
+                                                                                                                         minI] / (a[minI] * a[maxI]))
 
         tau = min(max(tau, tau_lb_u, tau_lb_v), tau_ub_u, tau_ub_v)
         if (tau == 0):
@@ -247,8 +328,8 @@ def gsmo(H, f, a, b=0, lb=-np.inf, ub=np.inf, x_init=None, nabla_0=None, toleran
         # Print iter info
         if (verb > 0 and t % verb == 0):
             obj = 0.5 * np.sum(x * nabla + x * f)
-            print("t=%d, KKTviol=%f, tau=%f, tau_lb=%f, tau_ub=%f, Q_P=%f" % \
-                  (t, maxF - minF, tau, max(tau_lb_u, tau_lb_v), min(tau_ub_u, tau_ub_v), obj))
+            print("t=%d, KKTviol=%f, tau=%f, tau_lb=%f, tau_ub=%f, Q_P=%f" % (
+                t, maxF - minF, tau, max(tau_lb_u, tau_lb_v), min(tau_ub_u, tau_ub_v), obj))
             # raw_input()
 
     fval = 0.5 * np.dot(x, nabla + f)
@@ -282,7 +363,7 @@ def compute_bias(K, ys, alphas, C):
         bias = np.mean(ys[ids] - np.sum(alpha_y * K[:, ids],
                                         axis=0))
 
-        ## Vectorized version of:
+        # Vectorized version of:
         # slow_bias = 0
         # for svi in ids:
         #     s = 0
@@ -299,7 +380,7 @@ def compute_bias(K, ys, alphas, C):
 
         e_i = ys - np.sum(alpha_y * K, axis=0)
 
-        ## Vectorized version of:
+        # Vectorized version of:
         # sv_indices = np.nonzero(sv_mask)[0]
         # def e(i):
         #     wx_i = 0
@@ -345,7 +426,9 @@ def montage(images, colormap='gray'):
                 break
             slice_w = j * h
             slice_h = k * w
-            im_matrix[slice_h:slice_h + w, slice_w:slice_w + h] = images[:, :, image_id]
+            im_matrix[slice_h:slice_h +
+                      w, slice_w:slice_w +
+                      h] = images[:, :, image_id]
             image_id += 1
     plt.imshow(im_matrix, cmap=colormap)
     plt.axis('off')
@@ -363,10 +446,9 @@ def show_classification(test_images, labels, letters):
     :param letters:         string with letters, e.g. 'CN'
     """
 
-
     for i in range(len(letters)):
-        imgs = test_images[:,:,labels==i]
-        subfig = plt.subplot(1,len(letters),i+1)
+        imgs = test_images[:, :, labels == i]
+        subfig = plt.subplot(1, len(letters), i + 1)
         montage(imgs)
         plt.title(letters[i])
 
@@ -402,7 +484,8 @@ def crossval(num_data, num_folds):
     num_column = np.int32(np.ceil(np.float64(num_data) / num_folds))
 
     for idx in range(num_folds):
-        tst_idx = range((idx * num_column), np.min([num_data, ((idx + 1) * num_column)]))
+        tst_idx = range((idx * num_column),
+                        np.min([num_data, ((idx + 1) * num_column)]))
         trn_idx = [i for i in list(range(num_data)) if i not in tst_idx]
         itst.append(inx[tst_idx])
         itrn.append(inx[trn_idx])
@@ -432,9 +515,11 @@ def plot_boundary(ax, model, plot_support_vectors=True):
 
     zorder = 0.1
     colors = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    plt.contourf(xs, ys, z, [-np.inf, 0, np.inf], colors=[colors[1], colors[0]], alpha=0.2, zorder=zorder)
+    plt.contourf(xs, ys, z, [-np.inf, 0, np.inf],
+                 colors=[colors[1], colors[0]], alpha=0.2, zorder=zorder)
     plt.contourf(xs, ys, z, [-1, 0, 1], colors='k', alpha=0.2, zorder=zorder)
-    plt.contour(xs, ys, z, [-1, 0, 1], colors=['k', 'r', 'k'], linestyles=['dashed', 'solid', 'dashed'], zorder=zorder)
+    plt.contour(xs, ys, z, [-1, 0, 1], colors=['k', 'r', 'k'],
+                linestyles=['dashed', 'solid', 'dashed'], zorder=zorder)
 
     if plot_support_vectors:
         sv_scale = (plt.rcParams['lines.markersize'] ** 2) * 5
@@ -464,15 +549,16 @@ def plot_points(X, y, size=None):
     plt.scatter(pts_B[0, :], pts_B[1, :], c=colors[1], s=size)
 
 
-################################################################################
-#####                                                                      #####
-#####             Below this line you may insert debugging code            #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line you may insert debugging code
+#####
+##########################################################################
 
 def main():
     # HERE IT IS POSSIBLE TO ADD YOUR TESTING OR DEBUGGING CODE
     pass
+
 
 if __name__ == "__main__":
     main()
