@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 def adaboost(X, y, num_steps):
     """
     Trains an AdaBoost classifier
@@ -17,8 +18,45 @@ def adaboost(X, y, num_steps):
     :return wc_errors:          error of the best weak classifier in each iteration, np array (n_wc, )
     :return upper_bound:        upper bound on the training error in each iteration, np array (n_wc, )
     """
-    raise NotImplementedError("You have to implement this function.")
-    strong_classifier, wc_errors, upper_bound = None, None, None
+
+    alphas = np.zeros(num_steps)
+    wc = np.empty(num_steps, dtype=object)
+
+    strong_classifier = dict()
+    strong_classifier['alpha'] = alphas
+    strong_classifier['wc'] = wc
+
+    upper_bound = np.ones(num_steps)
+    wc_errors = np.zeros(num_steps)
+
+    D = np.zeros_like(y, dtype=float)
+    indices_neg = np.where(y == -1)[0]
+    indices_pos = np.where(y == 1)[0]
+    D[indices_neg] = 0.5 / len(indices_neg)
+    D[indices_pos] = 0.5 / len(indices_pos)
+
+    for t in range(num_steps):
+        h_t, eps_t = find_best_weak(X, y, D)
+        alpha_t = np.log((1 - eps_t) / eps_t) / 2
+        Z_t = 2 * np.sqrt(eps_t * (1 - eps_t))
+
+        wc[t] = h_t
+        alphas[t] = alpha_t
+        wc_errors[t] = eps_t
+        upper_bound[t] = (upper_bound[t - 1] if t >= 0 else 1) * Z_t
+
+        if (eps_t >= 0.5):
+            break
+
+        idx = h_t['idx']
+        parity = h_t['parity']
+        theta = h_t['theta']
+        preds = np.where((parity * (X[idx] - theta)) > 0, 1, -1)
+
+        D = (D / Z_t) * np.where(preds == y,
+                                 np.sqrt(eps_t / (1 - eps_t)),
+                                 np.sqrt((1 - eps_t) / eps_t))
+
     return strong_classifier, wc_errors, upper_bound
 
 
@@ -31,8 +69,16 @@ def adaboost_classify(strong_classifier, X):
                                     n - number of data
     :return classif:            classification labels (values -1, 1), np array (n, )
     """
-    raise NotImplementedError("You have to implement this function.")
-    classif = None
+    classifs = strong_classifier['wc']
+    alphas = strong_classifier['alpha']
+
+    classif = np.zeros(X.shape[1])
+
+    for i, x in enumerate(X.T):
+        w_sum = np.sum([alpha * np.sign(classifier['parity'] * (x[classifier['idx']] - classifier['theta']))
+                        for classifier, alpha in zip(classifs, alphas)])
+        classif[i] = np.sign(w_sum)
+
     return classif
 
 
@@ -47,17 +93,30 @@ def compute_error(strong_classifier, X, y):
     :param y:                   testing labels (-1 or 1), np array (n, )
     :return errors:             errors of the strong classifier for all lengths from 1 to T, np array (T, )
     """
-    raise NotImplementedError("You have to implement this function.")
-    errors = None
+
+    T = len(strong_classifier['wc'])
+    errors = np.zeros(T)
+
+    for t in range(1, T + 1):
+        classifs_up_to_t = strong_classifier['wc'][:t]
+        alphas_up_to_t = strong_classifier['alpha'][:t]
+
+        preds = np.zeros(X.shape[1])
+        for i, x in enumerate(X.T):
+            w_sum = np.sum([alpha * np.sign(classifier['parity'] * (x[classifier['idx']] - classifier['theta']))
+                           for classifier, alpha in zip(classifs_up_to_t, alphas_up_to_t)])
+            preds[i] = np.sign(w_sum)
+
+        errors[t - 1] = np.sum(np.where(preds != y, 1, 0)) / y.shape[0]
+
     return errors
 
 
-
-################################################################################
-#####                                                                      #####
-#####             Below this line are already prepared methods             #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line are already prepared methods
+#####
+##########################################################################
 
 
 def find_best_weak(X, y, D):
@@ -93,7 +152,7 @@ def find_best_weak(X, y, D):
     wc = {}
 
     for i in range(N_wc):
-        weak_X = X[i, :] # weak classifier evaluated on all data
+        weak_X = X[i, :]  # weak classifier evaluated on all data
 
         thresholds = np.unique(weak_X)
         assert thresholds.ndim == 1
@@ -106,7 +165,8 @@ def find_best_weak(X, y, D):
 
         K = thresholds.size
 
-        classif = np.sign(np.reshape(weak_X, (N, 1)) - np.reshape(thresholds, (1, K)))
+        classif = np.sign(np.reshape(weak_X, (N, 1)) -
+                          np.reshape(thresholds, (1, K)))
         assert classif.ndim == 2
         assert classif.shape[0] == N
         assert classif.shape[1] == K
@@ -174,7 +234,9 @@ def show_classification(test_images, labels):
                     break
                 slice_w = j * h
                 slice_h = k * w
-                im_matrix[slice_h:slice_h + w, slice_w:slice_w + h] = images[:, :, image_id]
+                im_matrix[slice_h:slice_h +
+                          w, slice_w:slice_w +
+                          h] = images[:, :, image_id]
                 image_id += 1
         plt.imshow(im_matrix, cmap=colormap)
         plt.axis('off')
@@ -191,7 +253,7 @@ def show_classification(test_images, labels):
     plt.title('others')
 
 
-def show_classifiers_part(class_images, classifier, max_alpha = None):
+def show_classifiers_part(class_images, classifier, max_alpha=None):
     """
     :param class_images:  images of a selected number, np array (h, w, n)
     :param classifier:    adaboost classifier
@@ -215,6 +277,7 @@ def show_classifiers_part(class_images, classifier, max_alpha = None):
     plt.imshow(vis)
     plt.axis('off')
 
+
 def show_classifiers(class_images, classifier):
     """
     :param class_images:  images of a selected number, np array (h, w, n)
@@ -223,21 +286,23 @@ def show_classifiers(class_images, classifier):
     # how many times each pixel is selected for a weak classifier:
     M, N = class_images.shape[:2]
     indices = [el['idx'] for el in classifier['wc']]
-    counts, bins = np.histogram(indices, np.arange(-.5, M*N, 1))
+    counts, bins = np.histogram(indices, np.arange(-.5, M * N, 1))
     mx_count = np.max(counts)
 
-    # create rounds of weak classifiers, at each round and for a given pixel, there is at most 1 occurence:
+    # create rounds of weak classifiers, at each round and for a given pixel,
+    # there is at most 1 occurence:
 
     # keep max_alpha consistent between images:
     max_alpha = np.amax(classifier['alpha'])
 
-    fig=plt.figure(figsize=(4*mx_count,4), dpi= 100)
+    fig = plt.figure(figsize=(4 * mx_count, 4), dpi=100)
     done = [0 for k in range(len(indices))]
     shown = 0
     for k in range(mx_count):
-        indices = np.zeros((M*N,))
+        indices = np.zeros((M * N,))
         clf = {'wc': [], 'alpha': []}
-        for i, (wc, alpha) in enumerate( zip( classifier['wc'], classifier['alpha'] ) ):
+        for i, (wc, alpha) in enumerate(
+                zip(classifier['wc'], classifier['alpha'])):
             idx = wc['idx']
             if done[i] or indices[idx]:
                 continue
@@ -246,20 +311,21 @@ def show_classifiers(class_images, classifier):
             clf['wc'].append(wc)
             clf['alpha'].append(alpha)
             shown += 1
-        subfig = plt.subplot(1, mx_count, k+1)
-        show_classifiers_part(class_images, clf, max_alpha = max_alpha)
-    assert(shown == len(classifier['wc'])) # test if all shown
+        subfig = plt.subplot(1, mx_count, k + 1)
+        show_classifiers_part(class_images, clf, max_alpha=max_alpha)
+    assert (shown == len(classifier['wc']))  # test if all shown
 
 
-################################################################################
-#####                                                                      #####
-#####             Below this line you may insert debugging code            #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line you may insert debugging code
+#####
+##########################################################################
 
 def main():
     # HERE IT IS POSSIBLE TO ADD YOUR TESTING OR DEBUGGING CODE
     pass
+
 
 if __name__ == "__main__":
     main()
