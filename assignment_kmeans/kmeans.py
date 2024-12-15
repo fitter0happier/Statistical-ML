@@ -30,9 +30,11 @@ def k_means(x, k, max_iter, show=False, init_means=None):
     Note 2: DO NOT MODIFY INITIALIZATIONS
 
     """
+
     # Number of vectors
     n_vectors = x.shape[1]
     cluster_labels = np.zeros([n_vectors], np.int32)
+    previous_cluster_labels = np.ones([n_vectors], np.int32)
 
     # Means initialization
     if init_means is None:
@@ -43,17 +45,41 @@ def k_means(x, k, max_iter, show=False, init_means=None):
 
     i_iter = 0
     while i_iter < max_iter:
-        raise NotImplementedError("You have to implement this function.")
+        i_iter += 1
+
+        # Creating clusters
+        dists = np.linalg.norm(
+            x.reshape(-1, n_vectors, 1) - centroids.reshape(-1, 1, k), axis=0)
+        cluster_labels = np.argmin(dists ** 2, axis=1)
+        sq_dists = np.min(dists ** 2, axis=1)
+
+        if (np.array_equal(cluster_labels, previous_cluster_labels)):
+            break
+
+        # Updating centroids
+        for i in range(k):
+            T_k = x[:, cluster_labels == i]
+
+            if T_k.size == 0:
+                ind = np.random.choice(n_vectors, 1, replace=False)
+                centroids[:, i] = x[:, ind]
+            else:
+                centroids[:, i] = np.mean(T_k, axis=1)
+
+        previous_cluster_labels = cluster_labels.copy()
+
         # Ploting partial results
         if show:
             print('Iteration: {:d}'.format(i_iter))
-            show_clusters(x, cluster_labels, centroids, title='Iteration: {:d}'.format(i_iter))
+            show_clusters(
+                x,
+                cluster_labels,
+                centroids,
+                title='Iteration: {:d}'.format(i_iter))
 
     if show:
         print('Done.')
 
-    raise NotImplementedError("You have to implement this function.")
-    cluster_labels, centroids, sq_dists = None, None, None
     return cluster_labels, centroids, sq_dists
 
 
@@ -77,8 +103,18 @@ def k_means_multiple_trials(x, k, n_trials, max_iter, show=False):
     :return sq_dists:       squared distances to the nearest centroid for each feature vector,
                             np array (number_of_vectors, )
     """
-    raise NotImplementedError("You have to implement this function.")
+
     cluster_labels, centroids, sq_dists = None, None, None
+    best = np.inf
+
+    for _ in range(n_trials):
+        curr_cluster_labels, curr_centroids, curr_sq_dists = k_means(
+            x, k, max_iter, show=show)
+
+        if np.sum(curr_sq_dists) < best:
+            cluster_labels, centroids, sq_dists = curr_cluster_labels, curr_centroids, curr_sq_dists
+            best = np.sum(curr_sq_dists)
+
     return cluster_labels, centroids, sq_dists
 
 
@@ -91,8 +127,16 @@ def random_sample(weights):
 
     Note: use np.random.uniform() for random number generation in open interval (0, 1)
     """
-    raise NotImplementedError("You have to implement this function.")
-    idx = None
+
+    weights = weights / np.sum(weights)
+    prob = np.random.uniform()
+
+    for i, _ in enumerate(weights):
+        curr_sum = np.sum(weights[:i + 1])
+        if curr_sum >= prob:
+            idx = i
+            break
+
     return idx
 
 
@@ -105,8 +149,20 @@ def k_meanspp(x, k):
 
     :return centroids:  proposed centroids for k-means initialization, np array (dim, k)
     """
-    raise NotImplementedError("You have to implement this function.")
-    centroids = None
+
+    n_vectors = x.shape[1]
+
+    centroids = x[:, random_sample(np.ones(n_vectors))].reshape(-1, 1)
+    centroids_count = 1
+
+    for _ in range(1, k):
+        dists = np.linalg.norm(
+            x.reshape(-1, n_vectors, 1) - centroids.reshape(-1, 1, centroids_count), axis=0)
+        sq_min_dists = np.min(dists, axis=1) ** 2
+        centroids = np.append(
+            centroids, x[:, random_sample(sq_min_dists)].reshape(-1, 1), axis=1)
+        centroids_count += 1
+
     return centroids
 
 
@@ -119,23 +175,30 @@ def quantize_colors(im, k):
     :param im:          image for quantization, np array (h, w, 3) (np.uint8)
     :param k:           required number of quantized colors, scalar
     :return im_q:       image with quantized colors, np array (h, w, 3) (uint8)
-    
+
     note: make sure that the k-means is run on floating point inputs.
     """
 
-    assert im.dtype == np.uint8, f'input should be uint8, got {im.dtype}'
-    assert im_q.dtype == np.uint8, f'output should be uint8, your output is {im_q.dtype}'
+    h = im.shape[0]
+    w = im.shape[1]
 
-    raise NotImplementedError("You have to implement this function.")
-    im_q = None
+    im_reshaped = np.float64(im.reshape(-1, 3))
+    inds = np.random.randint(0, (h * w) - 1, 1000)
+    chosen_pixels = im_reshaped[inds]
+    _, centroids, _ = k_means(chosen_pixels.T, k, max_iter=float('inf'))
+    dists = np.linalg.norm(im_reshaped.reshape(h*w, -1, 1) - centroids, axis=1)
+    nearest_centroids = np.argmin(dists ** 2, axis=1)
+
+    im_q = centroids.T[nearest_centroids].reshape(h, w, 3).astype(np.uint8)
+
     return im_q
 
 
-################################################################################
-#####                                                                      #####
-#####             Below this line are already prepared methods             #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line are already prepared methods
+#####
+##########################################################################
 
 
 def compute_measurements(images):
@@ -149,10 +212,10 @@ def compute_measurements(images):
     images = images.astype(np.float64)
     H, W, N = images.shape
 
-    left = images[:, :(W//2), :]
-    right = images[:, (W//2):, :]
-    up = images[:(H//2), ...]
-    down = images[(H//2):, ...]
+    left = images[:, :(W // 2), :]
+    right = images[:, (W // 2):, :]
+    up = images[:(H // 2), ...]
+    down = images[(H // 2):, ...]
 
     L = np.sum(left, axis=(0, 1))
     R = np.sum(right, axis=(0, 1))
@@ -228,7 +291,9 @@ def show_clustered_images(images, labels, title=None):
                     break
                 slice_w = j * h
                 slice_h = k * w
-                im_matrix[slice_h:slice_h + w, slice_w:slice_w + h] = images[:, :, image_id]
+                im_matrix[slice_h:slice_h +
+                          w, slice_w:slice_w +
+                          h] = images[:, :, image_id]
                 image_id += 1
         return im_matrix
 
@@ -281,9 +346,8 @@ def show_mean_images(images, labels, letters=None, title=None):
 
     if title is not None:
         fig.suptitle(title)
-        
-    plt.tight_layout()
 
+    plt.tight_layout()
 
 
 def gen_kmeanspp_data(mu=None, sigma=None, n=None):
@@ -320,16 +384,24 @@ def interactive_kmeans():
         @interact(k=(2, 8), n_iter=(0, 50, 1), seed=(0, 50, 1))
         def plot_k_means(k=4, n_iter=0, seed=0):
             np.random.seed(seed)
-            centroids = x[:, np.random.choice(range(x.shape[1]), k, replace=False)]
+            centroids = x[:, np.random.choice(
+                range(x.shape[1]), k, replace=False)]
             if n_iter == 0:
-                show_clusters(x, np.ones([1, x.shape[1]]), centroids, title='K-means init')
+                show_clusters(x, np.ones([1, x.shape[1]]),
+                              centroids, title='K-means init')
             else:
-                cluster_labels, centroids, _ = k_means(x, k, n_iter, False, centroids)
-                show_clusters(x, cluster_labels, centroids, title='K-means {:d}-iters'.format(n_iter))
+                cluster_labels, centroids, _ = k_means(
+                    x, k, n_iter, False, centroids)
+                show_clusters(
+                    x,
+                    cluster_labels,
+                    centroids,
+                    title='K-means {:d}-iters'.format(n_iter))
 
     except ImportError:
-        print('Optional feature. If you want to play with interactive visualisations, '
-              'you have to have installed ipywidgets and notebook has to be marked as Trusted')
+        print(
+            'Optional feature. If you want to play with interactive visualisations, '
+            'you have to have installed ipywidgets and notebook has to be marked as Trusted')
 
 
 def interactive_initialization_comparison():
@@ -346,31 +418,44 @@ def interactive_initialization_comparison():
             cluster_labels_pp = np.ones([x.shape[1]])
 
             np.random.seed(seed)
-            centroids = x[:, np.random.choice(range(x.shape[1]), k, replace=False)]
+            centroids = x[:, np.random.choice(
+                range(x.shape[1]), k, replace=False)]
             np.random.seed(seed)
             centroids_pp = k_meanspp(x, k)
 
             if n_iter != 0:
-                cluster_labels, centroids, _ = k_means(x, k, n_iter, False, centroids)
-                cluster_labels_pp, centroids_pp, _ = k_means(x, k, n_iter, False, centroids_pp)
+                cluster_labels, centroids, _ = k_means(
+                    x, k, n_iter, False, centroids)
+                cluster_labels_pp, centroids_pp, _ = k_means(
+                    x, k, n_iter, False, centroids_pp)
 
-            show_clusters(x, cluster_labels, centroids, title='K-means random init ({:d}-iters)'.format(n_iter))
-            show_clusters(x, cluster_labels_pp, centroids_pp, title='K-means kmeans++ init ({:d}-iters)'.format(n_iter))
-
+            show_clusters(
+                x,
+                cluster_labels,
+                centroids,
+                title='K-means random init ({:d}-iters)'.format(n_iter))
+            show_clusters(
+                x,
+                cluster_labels_pp,
+                centroids_pp,
+                title='K-means kmeans++ init ({:d}-iters)'.format(n_iter))
 
     except ImportError:
-        print('Optional feature. If you want to play with interactive visualisations, '
-              'you have to have installed ipywidgets and notebook has to be marked as Trusted')
+        print(
+            'Optional feature. If you want to play with interactive visualisations, '
+            'you have to have installed ipywidgets and notebook has to be marked as Trusted')
 
-################################################################################
-#####                                                                      #####
-#####             Below this line you may insert debugging code            #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line you may insert debugging code
+#####
+##########################################################################
+
 
 def main():
     # HERE IT IS POSSIBLE TO ADD YOUR TESTING OR DEBUGGING CODE
     pass
+
 
 if __name__ == "__main__":
     main()
