@@ -7,6 +7,8 @@ import time
 import copy
 
 # layer interface - do not modify
+
+
 class Layer:
     def forward(self, x):
         raise NotImplementedError()
@@ -21,12 +23,15 @@ class Layer:
         return {}
 
 # loss interface - do not modify
+
+
 class Loss:
     def forward(self, x, y):
         raise NotImplementedError()
 
     def backward(self):
         raise NotImplementedError()
+
 
 class Linear(Layer):
     """
@@ -55,9 +60,10 @@ class Linear(Layer):
         :param x:  layer input - np.array (batch_sz, input_dimension)
         :return:   layer output - np.array (batch_sz, output_dimension)
         """
+
         self.x = x.copy()
-        raise NotImplementedError("You have to implement this function.")
-        output = None
+        output = x @ self.W + self.b
+
         return output
 
     def backward(self, dL_wrt_output):
@@ -69,10 +75,14 @@ class Linear(Layer):
                dL_wrt_W - np array (batch_sz, input_dimension, output_dimension)
                dL_wrt_b - np array (batch_sz, 1, output_dimension)
         """
-        raise NotImplementedError("You have to implement this function.")
-        dL_wrt_x = None
-        self.dL_wrt_W = None
-        self.dL_wrt_b = None
+
+        batch_sz = self.x.shape[0]
+
+        dL_wrt_x = dL_wrt_output @ self.W.T
+        self.dL_wrt_W = np.transpose(np.transpose((np.expand_dims(
+            dL_wrt_output, axis=1)), (0, 2, 1)) @ np.expand_dims(self.x, axis=1), (0, 2, 1))
+        self.dL_wrt_b = dL_wrt_output.reshape(batch_sz, 1, -1)
+
         return dL_wrt_x
 
     def params(self):
@@ -80,6 +90,7 @@ class Linear(Layer):
 
     def grads(self):
         return {'W': self.dL_wrt_W, 'b': self.dL_wrt_b}
+
 
 class ReLU(Layer):
     """
@@ -95,9 +106,10 @@ class ReLU(Layer):
         :param x:  arbitrary shaped np array
         :return:   ReLU activation (same shape as x)
         """
+
         self.x = x.copy()
-        raise NotImplementedError("You have to implement this function.")
-        output = None
+        output = np.maximum(0, x)
+
         return output
 
     def backward(self, dL_wrt_output):
@@ -105,9 +117,11 @@ class ReLU(Layer):
         :param dL_wrt_output: gradient of loss wrt layer output (same shape as forward x)
         :return:              gradient of loss wrt layer input (same shape as forward x)
         """
-        raise NotImplementedError("You have to implement this function.")
-        dL_wrt_x = None
+
+        dL_wrt_x = dL_wrt_output * np.where(self.x <= 0, 0, 1)
+
         return dL_wrt_x
+
 
 class Sigmoid(Layer):
     """
@@ -122,8 +136,10 @@ class Sigmoid(Layer):
         :param x:  arbitrary shaped np array
         :return:   Logistic sigmoid activation (same shape as x)
         """
-        raise NotImplementedError("You have to implement this function.")
-        output = None
+
+        self.a = x.copy()
+        output = 1 / (1 + np.exp(-x))
+
         return output
 
     def backward(self, dL_wrt_output):
@@ -131,8 +147,10 @@ class Sigmoid(Layer):
         :param dL_wrt_output: gradient of loss wrt layer output (same shape as forward x)
         :return:              gradient of loss wrt layer input (same shape as forward x)
         """
-        raise NotImplementedError("You have to implement this function.")
-        dL_wrt_x = None
+
+        dL_wrt_x = dL_wrt_output * \
+            (self.forward(self.a)) * (1 - self.forward(self.a))
+
         return dL_wrt_x
 
 
@@ -140,6 +158,7 @@ class SE(Loss):
     """
     Implements a mean-squared-error between inputs.
     """
+
     def __init__(self):
         self.x = None
         self.y = None
@@ -150,10 +169,11 @@ class SE(Loss):
         :param y:  np array, same shape as x
         :return:   squared-error - np array, same shape as x
         """
+
         self.x = x.copy()
         self.y = y.copy()
-        raise NotImplementedError("You have to implement this function.")
-        output = None
+        output = (x - y) ** 2
+
         return output
 
     def backward(self):
@@ -163,22 +183,32 @@ class SE(Loss):
         Note: The second input will be the ground truth label, which is fixed.
               No need to propagate gradient there
         """
-        raise NotImplementedError("You have to implement this function.")
-        dL_wrt_x = None
+
+        dL_wrt_x = 2 * (self.x - self.y)
+
         return dL_wrt_x
 
 
-################################################################################
-#####                                                                      #####
-#####                            Visualization                             #####
-#####                                                                      #####
-#####             Below this line are already prepared methods             #####
-#####                                                                      #####
-#####                    You do not have to modify this                    #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Visualization
+#####
+# Below this line are already prepared methods
+#####
+# You do not have to modify this
+#####
+##########################################################################
 
-def visualize_data(data, legend=None, title=None, xlabel=None, ylabel=None, save_filepath=None, show=True, hline=None, hlinelabel=None):
+def visualize_data(
+        data,
+        legend=None,
+        title=None,
+        xlabel=None,
+        ylabel=None,
+        save_filepath=None,
+        show=True,
+        hline=None,
+        hlinelabel=None):
     """
     visualize_data(data, legend, title, xlabel, ylabel, save_filepath, show)
 
@@ -206,14 +236,29 @@ def visualize_data(data, legend=None, title=None, xlabel=None, ylabel=None, save
     if hline:
         plt.axhline(linewidth=2, y=hline, color='red', ls='--')
     if hlinelabel:
-        plt.text(0, hline, hlinelabel, fontsize=10, va='bottom', ha='left', c='red')
+        plt.text(
+            0,
+            hline,
+            hlinelabel,
+            fontsize=10,
+            va='bottom',
+            ha='left',
+            c='red')
     if save_filepath:
         plt.savefig(save_filepath)
     if show:
         plt.show()
 
 
-def visualize_xy(data, legend=None, title=None, xlabel=None, ylabel=None, save_filepath=None, show=True, **kwargs):
+def visualize_xy(
+        data,
+        legend=None,
+        title=None,
+        xlabel=None,
+        ylabel=None,
+        save_filepath=None,
+        show=True,
+        **kwargs):
     """
     visualize_data(data, legend, title, xlabel, ylabel, save_filepath, show)
 
@@ -283,7 +328,9 @@ def show_classification(test_images, labels, letters):
                     break
                 slice_w = j * h
                 slice_h = k * w
-                im_matrix[slice_h:slice_h + w, slice_w:slice_w + h] = images[:, :, image_id]
+                im_matrix[slice_h:slice_h +
+                          w, slice_w:slice_w +
+                          h] = images[:, :, image_id]
                 image_id += 1
         plt.imshow(im_matrix, cmap=colormap)
         plt.axis('off')
@@ -295,13 +342,14 @@ def show_classification(test_images, labels, letters):
         montage(imgs)
         plt.title(letters[i])
 
+
 def load_data(path, class_a, class_b):
     with np.load(path) as f:
         x_train, y_train = f['x_train'], f['y_train']
         x_test, y_test = f['x_test'], f['y_test']
 
-        x_train = x_train.reshape(-1, 28*28)
-        x_test = x_test.reshape(-1, 28*28)
+        x_train = x_train.reshape(-1, 28 * 28)
+        x_test = x_test.reshape(-1, 28 * 28)
 
         X_trn = x_train[np.logical_or(y_train == class_a,
                                       y_train == class_b), :]
@@ -312,7 +360,7 @@ def load_data(path, class_a, class_b):
         y_trn[y_trn == class_b] = 1
 
         y_tst = y_test[np.logical_or(y_test == class_a,
-                                    y_test == class_b)]
+                                     y_test == class_b)]
         y_tst = y_tst.reshape(-1, 1)
         y_tst[y_tst == class_a] = 0
         y_tst[y_tst == class_b] = 1
@@ -324,19 +372,19 @@ def load_data(path, class_a, class_b):
         X_trn = (X_trn - trn_mean) / trn_std
 
         X_tst = x_test[np.logical_or(y_test == class_a,
-                                    y_test == class_b), :]
+                                     y_test == class_b), :]
 
         X_tst = (X_tst - trn_mean) / trn_std
         return (X_trn, y_trn), (X_tst, y_tst)
 
 
-################################################################################
-#####                                                                      #####
-#####             Below this line you may insert debugging code            #####
-#####                                                                      #####
-#####                  Already prepared -- You can modify                  #####
-#####                                                                      #####
-################################################################################
+##########################################################################
+#####
+# Below this line you may insert debugging code
+#####
+# Already prepared -- You can modify
+#####
+##########################################################################
 
 def main():
     """
@@ -345,7 +393,8 @@ def main():
     """
 
     # set hyperparameters
-    raise NotImplementedError("You have to set hyperparameters yourself (play with them)")
+    raise NotImplementedError(
+        "You have to set hyperparameters yourself (play with them)")
     learning_rate = None
     batch_size = None
     N_epochs = 90
@@ -362,7 +411,7 @@ def main():
                                                class_b)
 
     N_trn, D = X_trn.shape
-    assert D == 28*28
+    assert D == 28 * 28
     assert y_trn.shape == (N_trn, 1)
 
     # Shuffle the dataset
@@ -396,7 +445,7 @@ def main():
     batch_count = int(np.ceil(N_trn / batch_size))
     for epoch in range(N_epochs):
         try:
-            cumulative_epoch_trn_loss = 0 # just for reporting progress
+            cumulative_epoch_trn_loss = 0  # just for reporting progress
             time_start = time.time()
             for batch_i in range(batch_count):
                 # load the minibatch:
@@ -422,7 +471,8 @@ def main():
                 # Update the weights with gradient descent
                 for layer in model:
                     for param_name, param_value in layer.params().items():
-                        param_value -= learning_rate * layer.grads()[param_name].mean(axis=0) # mean across the minibatch
+                        param_value -= learning_rate * \
+                            layer.grads()[param_name].mean(axis=0)  # mean across the minibatch
 
             # validation
             activation = X_val.copy()
@@ -431,25 +481,35 @@ def main():
             val_losses.append(trn_head.forward(activation, y_val).mean())
 
             # remember the best model so far
-            if len(val_losses) == 0 or val_losses[-1] < val_losses[best_val_loss_epoch]:
+            if len(
+                    val_losses) == 0 or val_losses[-1] < val_losses[best_val_loss_epoch]:
                 best_val_loss_epoch = epoch
-                model_best_params = [copy.deepcopy(layer.params()) for layer in model]
+                model_best_params = [
+                    copy.deepcopy(
+                        layer.params()) for layer in model]
 
             trn_losses.append(cumulative_epoch_trn_loss / batch_count)
             if epoch % print_each == 0:
-                print("[{:04d}][TRN] MSE loss {:2f} ({:.1f}s)".format(epoch, trn_losses[-1], time.time() - time_start))
-                print("[{:04d}][VAL] MSE loss {:2f}".format(epoch, val_losses[-1]))
+                print("[{:04d}][TRN] MSE loss {:2f} ({:.1f}s)".format(
+                    epoch, trn_losses[-1], time.time() - time_start))
+                print("[{:04d}][VAL] MSE loss {:2f}".format(
+                    epoch, val_losses[-1]))
         except KeyboardInterrupt:
             print('Early exit')
             break
 
-
     # Plot epochs
-    visualize_data([val_losses, trn_losses], legend=['validation', 'training'],
-                   xlabel='epoch', ylabel='MSE', save_filepath='numpy_nn_training.png')
+    visualize_data([val_losses,
+                    trn_losses],
+                   legend=['validation',
+                           'training'],
+                   xlabel='epoch',
+                   ylabel='MSE',
+                   save_filepath='numpy_nn_training.png')
 
     # TST load best model
-    print('Best VAL model loss {:.4f} at epoch #{:d}.'.format(val_losses[best_val_loss_epoch], best_val_loss_epoch))
+    print('Best VAL model loss {:.4f} at epoch #{:d}.'.format(
+        val_losses[best_val_loss_epoch], best_val_loss_epoch))
     for layer_id in range(len(model_best_params)):
         for key, value in model_best_params[layer_id].items():
             model[layer_id].params()[key] = value
@@ -468,8 +528,8 @@ def main():
 
     plt.figure(figsize=(15, 10))
     plt.title('NN classification: test error {:.4f}'.format(test_error))
-    show_classification(X_tst.transpose(1, 0).reshape(28, 28, -1), y_hat.squeeze(), '{}{}'.format(class_a,
-                                                                                                  class_b))
+    show_classification(X_tst.transpose(1, 0).reshape(
+        28, 28, -1), y_hat.squeeze(), '{}{}'.format(class_a, class_b))
     plt.savefig('numpy_nn_classification.png')
     plt.show()
 
